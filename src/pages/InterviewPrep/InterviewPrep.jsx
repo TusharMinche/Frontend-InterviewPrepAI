@@ -1,47 +1,53 @@
-import React, { useEffect, useState } from 'react'
-import { data, useParams } from 'react-router-dom';
-import moment from"moment";
-import{ AnimatePresence, motion} from "framer-motion";
-import { LuCircleAlert , LuListCollapse} from "react-icons/lu";
-import SpinnerLoader from '../../components/Loader/SpinnerLoader';
-import{ toast } from "react-hot-toast";
-import DashboardLayout from '../../components/layouts/DashboardLayout';
-import RoleInfoHeader from './components/RoleInfoHeader';
-import axiosInstance from '../../utils/axiosInstance';
-import { API_PATHS } from '../../utils/apiPaths';
-import QuestionCard from '../../components/Cards/QuestionCard';
-import AIResponsePreview from './components/AIResponsePreview';
-import Drawer from '../../components/Drawer';
-import SkeletonLoader from '../../components/Loader/SkeletonLoader';
+import React, { useEffect, useState } from "react";
+import { data, useParams } from "react-router-dom";
+import moment from "moment";
+import { AnimatePresence, motion } from "framer-motion";
+import { LuCircleAlert, LuListCollapse } from "react-icons/lu";
+import SpinnerLoader from "../../components/Loader/SpinnerLoader";
+import { toast } from "react-hot-toast";
+import DashboardLayout from "../../components/layouts/DashboardLayout";
+import RoleInfoHeader from "./components/RoleInfoHeader";
+import axiosInstance from "../../utils/axiosInstance";
+import { API_PATHS } from "../../utils/apiPaths";
+import QuestionCard from "../../components/Cards/QuestionCard";
+import AIResponsePreview from "./components/AIResponsePreview";
+import Drawer from "../../components/Drawer";
+import SkeletonLoader from "../../components/Loader/SkeletonLoader";
+// import jsPDF from "jspdf";
+import { marked } from "marked";
+import pdfMake from "pdfmake/build/pdfmake";
+import pdfFonts from "pdfmake/build/vfs_fonts";
+pdfMake.vfs = pdfFonts.vfs; // ✅ correct property
+
 const InterviewPrep = () => {
   const { sessionId } = useParams();
-  const [sessionData,setSessionData] = useState(null);
-  const [errorMsg , setErrorMsg ] = useState("");
+  const [sessionData, setSessionData] = useState(null);
+  const [errorMsg, setErrorMsg] = useState("");
 
-  const [openLeanMoreDrawer , setOpenLeanMoreDrawer ] = useState(false);
-  const [explanations , setExplanations] = useState(null);
+  const [openLeanMoreDrawer, setOpenLeanMoreDrawer] = useState(false);
+  const [explanations, setExplanations] = useState(null);
 
-  const [ isLoading , setIsLoading] = useState(false);
-  const [isUpdateLoader , setIsUpdateLoader] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const [isUpdateLoader, setIsUpdateLoader] = useState(false);
 
-  //Fetch session data by session id 
+  //Fetch session data by session id
   const fetchSessionDetailsById = async () => {
-    try{
+    try {
       const response = await axiosInstance.get(
         API_PATHS.SESSION.GET_ONE(sessionId)
       );
 
-      if (response.data && response.data.session){
+      if (response.data && response.data.session) {
         setSessionData(response.data.session);
       }
-    } catch(error) {
-      console.error("Error",error);
+    } catch (error) {
+      console.error("Error", error);
     }
   };
 
   //Generate concept explanation
   const generateConceptExplaination = async (question) => {
-    try{
+    try {
       setErrorMsg("");
       setExplanations(null);
 
@@ -54,20 +60,20 @@ const InterviewPrep = () => {
           question,
         }
       );
-console.log("API Response:", response.data);
+      console.log("API Response:", response.data);
       if (response.data) {
         setExplanations(response.data);
       }
     } catch (error) {
-      setExplanations(null)
+      setExplanations(null);
       setErrorMsg("Failed to generate explaination ,try again later");
-      console.error("Error:",error);
+      console.error("Error:", error);
     } finally {
       setIsLoading(false);
     }
   };
 
-  //Pin Question 
+  //Pin Question
   const toggleQuestionPinStatus = async (questionId) => {
     try {
       const response = await axiosInstance.post(
@@ -81,17 +87,16 @@ console.log("API Response:", response.data);
         fetchSessionDetailsById();
       }
     } catch (error) {
-      console.error("Error:",error);
+      console.error("Error:", error);
     }
   };
 
   //ADD more quetions to a session
   const uploadMoreQuestions = async () => {
-    try{
+    try {
       setIsUpdateLoader(true);
 
-
-      //Call AI API to generate questions 
+      //Call AI API to generate questions
       const aiResponse = await axiosInstance.post(
         API_PATHS.AI.GENERATE_QUESTIONS,
         {
@@ -116,17 +121,194 @@ console.log("API Response:", response.data);
       if (response.data) {
         toast.success("Added more Q&A!!");
         fetchSessionDetailsById();
-
       }
-    } catch (error){
+    } catch (error) {
       if (error.response && error.response.data.message) {
-        setError(error.response.data.message)
-      } else{
+        setError(error.response.data.message);
+      } else {
         setError("Something went wrong . Please try again");
       }
     } finally {
       setIsUpdateLoader(false);
     }
+  };
+
+  const generatePDF = () => {
+    if (!sessionData) return;
+
+    // --- Utility to convert markdown -> pdfmake rich text array
+    const parseMarkdown = (text) => {
+      const html = marked.parse(text);
+      const tempDiv = document.createElement("div");
+      tempDiv.innerHTML = html;
+
+      const result = [];
+
+      for (const el of tempDiv.childNodes) {
+        if (el.nodeName === "P") {
+          result.push({ text: el.innerText, margin: [0, 0, 0, 8] });
+        } else if (el.nodeName === "UL") {
+          const items = [];
+          for (const li of el.querySelectorAll("li")) {
+            items.push({ text: li.innerText, margin: [0, 2, 0, 2] });
+          }
+          result.push({ ul: items, margin: [0, 4, 0, 8] });
+        } else if (el.nodeName === "OL") {
+          const items = [];
+          for (const li of el.querySelectorAll("li")) {
+            items.push({ text: li.innerText, margin: [0, 2, 0, 2] });
+          }
+          result.push({ ol: items, margin: [0, 4, 0, 8] });
+        } else if (el.nodeName === "PRE") {
+          result.push({
+            text: el.innerText,
+            style: "codeBlock",
+            margin: [0, 5, 0, 8],
+          });
+        } else if (el.nodeName === "H3") {
+          result.push({
+            text: el.innerText,
+            style: "subheader",
+            margin: [0, 12, 0, 6],
+          });
+        }
+      }
+
+      return result;
+    };
+
+    const docDefinition = {
+      pageSize: "A4",
+      pageMargins: [50, 80, 50, 60],
+      header: {
+        margin: [50, 20, 50, 0],
+        columns: [
+          { text: "Interview Preparation Report", style: "headerTitle" },
+          {
+            text: moment().format("Do MMM YYYY"),
+            alignment: "right",
+            color: "#666",
+            margin: [0, 4, 0, 0],
+          },
+        ],
+      },
+      footer: function (currentPage, pageCount) {
+        return {
+          margin: [50, 20, 50, 0],
+          columns: [
+            {
+              text: `${sessionData.role} | ${sessionData.topicsToFocus}`,
+              color: "#666",
+              fontSize: 9,
+            },
+            {
+              text: `Page ${currentPage} of ${pageCount}`,
+              alignment: "right",
+              fontSize: 9,
+              color: "#666",
+            },
+          ],
+        };
+      },
+
+      content: [
+        {
+          text: `${sessionData.role} Interview Preparation Report`,
+          style: "title",
+          margin: [0, 0, 0, 10],
+        },
+        {
+          columns: [
+            {
+              text: `Experience: ${sessionData.experience} years`,
+              width: "33%",
+            },
+            { text: `Topics: ${sessionData.topicsToFocus}`, width: "33%" },
+            { text: `Date: ${moment().format("Do MMM YYYY")}`, width: "33%" },
+          ],
+          style: "meta",
+          margin: [0, 0, 0, 20],
+        },
+        {
+          canvas: [
+            { type: "line", x1: 0, y1: 0, x2: 500, y2: 0, lineWidth: 1 },
+          ],
+        },
+        { text: " ", margin: [0, 5] },
+
+        ...sessionData.questions.flatMap((q, i) => [
+          {
+            text: `${i + 1}. ${q.question}`,
+            style: "question",
+            margin: [0, 15, 0, 6],
+          },
+          {
+            stack: parseMarkdown(q.answer),
+            style: "answer",
+            margin: [10, 0, 0, 10],
+          },
+          {
+            canvas: [
+              {
+                type: "line",
+                x1: 0,
+                y1: 0,
+                x2: 500,
+                y2: 0,
+                lineWidth: 0.5,
+                lineColor: "#ccc",
+              },
+            ],
+          },
+        ]),
+      ],
+
+      styles: {
+        headerTitle: {
+          fontSize: 13,
+          bold: true,
+          color: "#2E3A59",
+        },
+        title: {
+          fontSize: 18,
+          bold: true,
+          color: "#2E3A59",
+        },
+        meta: {
+          fontSize: 10,
+          color: "#666",
+        },
+        question: {
+          fontSize: 12,
+          bold: true,
+          color: "#1E2A38",
+        },
+        answer: {
+          fontSize: 11,
+          color: "#333",
+          lineHeight: 1.4,
+        },
+        codeBlock: {
+          fontSize: 9,
+          font: "Roboto",
+          background: "#f5f5f5",
+          color: "#222",
+        },
+
+        subheader: {
+          fontSize: 13,
+          bold: true,
+          color: "#2E3A59",
+        },
+      },
+      defaultStyle: {
+        font: "Roboto",
+      },
+    };
+
+    pdfMake
+      .createPdf(docDefinition)
+      .download(`${sessionData.role}_Interview_Report.pdf`);
   };
 
   useEffect(() => {
@@ -135,111 +317,111 @@ console.log("API Response:", response.data);
     }
     return () => {};
   }, []);
+
   return (
     <DashboardLayout>
       <RoleInfoHeader
         role={sessionData?.role || ""}
         topicsToFocus={sessionData?.topicsToFocus || ""}
-        experience={sessionData?.experience ||"-"}
+        experience={sessionData?.experience || "-"}
         questions={sessionData?.questions?.length || "-"}
         description={sessionData?.description || ""}
         lastUpdated={
           sessionData?.updatedAt
             ? moment(sessionData.updatedAt).from("Do MMM YYYY")
-            :""
+            : ""
         }
-    />
-    <div className='container mx-auto pt-4 pb-4 px-4 md:px-0'>
-      <h2 className='text-lg font-semibold color-black'>Interview Q & A</h2>
+      />
+      <div className="container mx-auto pt-4 pb-4 px-4 md:px-0">
+        <h2 className="text-lg font-semibold color-black">Interview Q & A</h2>
 
-
-      <div className='grid grid-cols-12 gap-4 mt-5 mb-10'>
-        <div
-          className={`col-span-12 ${
-            openLeanMoreDrawer ? "md:col-span-7" : "md:col-span-8"
-          }`}
+        <button
+          onClick={generatePDF}
+          className="flex items-center gap-2 bg-black text-white px-4 py-2 rounded-md text-sm hover:bg-gray-800"
         >
+          Download PDF
+        </button>
 
-          <AnimatePresence>
-            {sessionData?.questions?.map((data, index) => {
-              return (
-                <motion.div
-                  key={data._id || index}
-                  initial={{opacity:0 , y: -20}}
-                  animate={{opacity: 1,y: 0}}
-                  exit={{ opacity: 0 , scale:0.95}}
-                  transition={{
-                    duration: 0.4,
-                    type: "spring",
-                    stiffness: 100,
-                    delay: index * 0.1,
-                    damping: 15,
-                  }}
-                  layout //This is the key prop that animates position changes
-                  layoutId={`question-${data._id || index}`}//helps  framer track specific items 
-                >
-                  <>
-                    <QuestionCard
-                      question={data?.question}
-                      answer={data?.answer}
-                      onLearnMore={() => 
-                        generateConceptExplaination(data.question)
-                      }
-                      isPinned={data?.isPinned}
-                      onTogglePin={() => toggleQuestionPinStatus(data._id)}
-        
-                    /> 
-                  
-                  
+        <div className="grid grid-cols-12 gap-4 mt-5 mb-10">
+          <div
+            className={`col-span-12 ${
+              openLeanMoreDrawer ? "md:col-span-7" : "md:col-span-8"
+            }`}
+          >
+            <AnimatePresence>
+              {sessionData?.questions?.map((data, index) => {
+                return (
+                  <motion.div
+                    key={data._id || index}
+                    initial={{ opacity: 0, y: -20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, scale: 0.95 }}
+                    transition={{
+                      duration: 0.4,
+                      type: "spring",
+                      stiffness: 100,
+                      delay: index * 0.1,
+                      damping: 15,
+                    }}
+                    layout //This is the key prop that animates position changes
+                    layoutId={`question-${data._id || index}`} //helps  framer track specific items
+                  >
+                    <>
+                      <QuestionCard
+                        question={data?.question}
+                        answer={data?.answer}
+                        onLearnMore={() =>
+                          generateConceptExplaination(data.question)
+                        }
+                        isPinned={data?.isPinned}
+                        onTogglePin={() => toggleQuestionPinStatus(data._id)}
+                      />
 
-                  {!isLoading &&
-                    sessionData?.questions?.length == index + 1 && (
-                      <div className='flex items-center justify-center mt-5'>
-                        <button 
-                          className='flex items-center gap-3 text-sm text-white font-medium bg-black px-5 py-2 mr-2 rounded text-nowrap cursor-pointer'
-                          disabled={isLoading || isUpdateLoader}
-                          onClick={uploadMoreQuestions}
-                        >
-                          {isUpdateLoader ? (
-                            <SpinnerLoader />
-                          ) : (
-                            <LuListCollapse className='text-lg' />
-                          )}{" "}
-                          Load More Questions 
-                        </button>
-                      </div>
-                    )}
-
+                      {!isLoading &&
+                        sessionData?.questions?.length == index + 1 && (
+                          <div className="flex items-center justify-center mt-5">
+                            <button
+                              className="flex items-center gap-3 text-sm text-white font-medium bg-black px-5 py-2 mr-2 rounded text-nowrap cursor-pointer"
+                              disabled={isLoading || isUpdateLoader}
+                              onClick={uploadMoreQuestions}
+                            >
+                              {isUpdateLoader ? (
+                                <SpinnerLoader />
+                              ) : (
+                                <LuListCollapse className="text-lg" />
+                              )}{" "}
+                              Load More Questions
+                            </button>
+                          </div>
+                        )}
                     </>
-                </motion.div>
-              );
-            })}
-          </AnimatePresence>
+                  </motion.div>
+                );
+              })}
+            </AnimatePresence>
+          </div>
+        </div>
+
+        <div>
+          <Drawer
+            isOpen={openLeanMoreDrawer}
+            onClose={() => setOpenLeanMoreDrawer(false)}
+            title={!isLoading && explanations?.title}
+          >
+            {errorMsg && (
+              <p className="flex gap-2 text-sm text-amber-600 font-medium">
+                <LuCircleAlert className="mt-1" /> {errorMsg}
+              </p>
+            )}
+            {isLoading && <SkeletonLoader />}
+            {!isLoading && explanations && (
+              <AIResponsePreview content={explanations?.explanations} />
+            )}
+          </Drawer>
         </div>
       </div>
-
-
-
-      <div>
-        <Drawer 
-          isOpen={openLeanMoreDrawer}
-          onClose={() => setOpenLeanMoreDrawer(false)}
-          title={!isLoading && explanations?.title}
-        >
-          {errorMsg && (
-            <p className='flex gap-2 text-sm text-amber-600 font-medium'>
-              <LuCircleAlert className='mt-1' /> {errorMsg}
-            </p>
-          )}
-          {isLoading && <SkeletonLoader />}
-          {!isLoading && explanations && (
-            <AIResponsePreview content={explanations?.explanations} />
-          )}
-        </Drawer>
-      </div>
-    </div>         
     </DashboardLayout>
-  )
-}
+  );
+};
 
-export default InterviewPrep
+export default InterviewPrep;
